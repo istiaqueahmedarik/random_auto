@@ -9,6 +9,7 @@ from cv_bridge import CvBridge
 import cv2
 import numpy as np
 import json
+import math
 
 class ArucoDetector(Node):
     def __init__(self):
@@ -87,15 +88,14 @@ class ArucoDetector(Node):
                     # distance to marker is primarily z
                     x_opt, y_opt, z_opt = tvec[0][0]
                     
-                    # ROS standard base_link front reference: x-forward, y-left, z-up
-                    x_ros = float(z_opt)
-                    y_ros = float(-x_opt)
-                    z_ros = float(-y_opt)
+                    # Calculate Euclidean distance on ground plane
+                    distance = float(math.hypot(x_opt, z_opt))
+                    # Left/Right offset (optical x is right, so -x is left)
+                    offset = float(-x_opt)
 
                     results[str(marker_id)] = {
-                        "x": x_ros,
-                        "y": y_ros,
-                        "z": z_ros
+                        "distance": distance,
+                        "offset": offset
                     }
                 
                 # Draw markers and axes
@@ -106,6 +106,13 @@ class ArucoDetector(Node):
                         filtered_corners[i], self.marker_size, self.camera_matrix, self.dist_coeffs
                     )
                     cv2.drawFrameAxes(cv_image, self.camera_matrix, self.dist_coeffs, rvec, tvec, self.marker_size / 2)
+
+        # Publish the relative positions if any markers were processed
+        if len(results) > 0:
+            msg_str = String()
+            msg_str.data = json.dumps(results)
+            self.rel_pub.publish(msg_str)
+
         # Publish the image with drawn markers
         try:
             image_msg = self.bridge.cv2_to_imgmsg(cv_image, encoding='bgr8')
